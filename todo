@@ -1,0 +1,8 @@
+Comamnds:
+/help shows all Comamnds
+/members shows all members
+
+Disconnect messages: "2 disconnected"
+Host quit ends server (the right way with closing message causing legit shutdown on other terminals)
+
+@ addressing for direct message
