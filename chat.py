@@ -124,6 +124,7 @@ def server():
     server.listen(max_members)
 
     client_list = []
+    to_remove = []
 
     while not_done:
         # New connections can be accepted
@@ -141,14 +142,9 @@ def server():
                 client.send(f'You are${new_client_id}'.encode())
                 client_list.append((client, new_client_id, addr))
 
-
-            for client_socket, client_id, client_addr in client_list:
-                try:
-                    if client_id != new_client_id:
-                        client_socket.send(f'New chatter joined: {new_client_id}'.encode())
-                except Exception as e:
-                    print(f"Error sending message to client {client_id}: {e}")
-                    client_list.remove((client_socket, client_id, client_addr))
+            # Broadcast message of new chatter
+            new_chatter_message = f"New chatter joined: {new_client_id}"
+            server_broadcast(new_chatter_message, new_client_id, client_list)
 
 
             # Launch thread to handle individual client connection
@@ -163,22 +159,96 @@ def server():
 
 # The server's listening thread for a single socket
 def server_listen(c_id: int, c_sock: socket.socket, c_list: list):
-    not_done = True
-    while not_done:
-        # incoming = c_sock.recv(1024).decode().split('$')[0]
-        incoming = c_sock.recv(1024).decode()
-        if incoming:
-            logging.info(f"{c_id} says: {incoming}")
+    # Listen to the client infinitely until disconnect
+    while True:
+        try:
+            incoming = c_sock.recv(1024).decode()
+            # If message from client is non-empty
+            if incoming:
+                logging.info(f"{c_id} says: {incoming}")
 
-            # Broadcast the message to everyone
-            for client_socket, client_id, client_addr in c_list:
-                if client_id != c_id:
-                    try:
-                        client_socket.send(incoming.encode())
-                    except Exception as e:
-                        print(f"Error sending message to client {client_id}: {e}")
-                        c_list.remove((client_socket, client_id, client_addr))
+                # Quit command detected from host
+                if incoming == "0: /quit$":
+                    server_quit(c_list)
+                # Normal message
+                else:
+                    # Broadcast the message to everyone
+                    server_broadcast(incoming, c_id, c_list)
+            # Empty message. Client left
+            else:
+                to_remove = []
+                to_remove.append(get_client_from_id(c_id, c_sock, c_list))
+                amend_client_list(c_list, to_remove)
+                client_left_message = f"-- User {c_id} left the chat --"
+                server_broadcast(client_left_message, c_id, c_list)
 
+                break
+        except Exception as e:
+            print(f"EXCEPTION TRIGGERED IN server_listen() {e}")
+            logging.error(f"EXCEPTION TRIGGERED IN server_listen() {e}")
+            break
+    c_sock.close()
+
+# Send a message receievd from a client to every other client
+def server_broadcast(message, source_client_id, c_list):
+    to_remove = []
+    # Broadcast the message to everyone
+    for client_socket, client_id, client_addr in c_list:
+        if client_id != source_client_id:
+            try:
+                client_socket.send(message.encode())
+            except Exception as e:
+                print(f"Error sending message to client {client_id}: {e}")
+                to_remove.append((client_socket, client_id, client_addr))
+    if len(to_remove) > 0:
+        amend_client_list(c_list, to_remove)
+
+def get_client_from_id(target_id, target_sock, client_list):
+    for c_sock, c_id, c_addr in client_list:
+        if target_sock == c_sock or target_id == c_id:
+            return (c_sock, c_id, c_addr)
+    logging.error(f"get_client_id() for id:{target_id} failed to find target")
+    return None
+
+# Close the server
+def server_quit(c_list: list):
+    to_remove = []
+    print("The party is over")
+    
+    # Broadcast the message to everyone
+    for client_socket, client_id, client_addr in c_list:
+        if client_id != 0:
+            try:
+                client_socket.send("Server shutting down...".encode())
+            except Exception as e:
+                print(f"Error sending message to client {client_id}: {e}")
+                to_remove.append((client_socket, client_id, client_addr))
+    if len(to_remove) > 0:
+        amend_client_list(c_list, to_remove)
+    
+    time.sleep(1)
+    for _ in range(3):
+        print(".", end='', flush=True)
+        time.sleep(1)
+    for client_socket, _, _ in c_list:
+        try:
+            client_socket.close()
+        except:
+            pass
+    
+    os._exit(0)
+
+# Remove clients that threw an exception or otherwise
+def amend_client_list(client_list, to_remove):
+    for item in to_remove:
+        if item in client_list:
+            client_list.remove(item)
+        else:
+            logging.error(f"amend_client_list() tried to remove an item that wasn't there. {item}")
+            #print("amend_client_list() It wasn't there")
+    to_remove.clear()
+    
+    
 
 
 if __name__ == '__main__':

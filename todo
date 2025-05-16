@@ -1,7 +1,10 @@
-Comamnds:
-/help shows all Comamnds
+Commands:
+/help shows all commands
 /members shows all members
 /time toggle on off timestamps
+/ban or /remove from host to remove
+
+Implement usernames by sending username after ID in message
 
 Disconnect messages: "2 disconnected"
 Host quit ends server (the right way with closing message causing legit shutdown on other terminals)
@@ -12,3 +15,6 @@ Handle multiple users attempting to start server
 
 Multiple servers with port command line argument
 
+Handle clients leaving during chat
+
+Uniform messages from server in the form print(f"-- message --")
