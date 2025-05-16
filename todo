@@ -1,8 +1,14 @@
 Comamnds:
 /help shows all Comamnds
 /members shows all members
+/time toggle on off timestamps
 
 Disconnect messages: "2 disconnected"
 Host quit ends server (the right way with closing message causing legit shutdown on other terminals)
 
 @ addressing for direct message
+
+Handle multiple users attempting to start server
+
+Multiple servers with port command line argument
+

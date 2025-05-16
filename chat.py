@@ -1,6 +1,10 @@
 # Ethan Sandstrom
 # May 2025
 
+# To use:
+# python3 chat.py s      To create a server and chat as the host
+# python3 chat.py        To join existing server
+
 import os
 import sys
 import socket
@@ -13,21 +17,27 @@ from prompt_toolkit.patch_stdout import patch_stdout
 
 
 mode = 'c'
+max_members = 20
+
 log_path = os.path.join(os.path.dirname(__file__), 'app.log')
 logging.basicConfig(filename=log_path, level=logging.INFO)
 
 def main ():
-    print("New chat started")
-    print("_________________\n")
     if len(sys.argv) == 2:
         if sys.argv[1] == 's':
             global mode
             mode = 's'
+            print("New chat started")
+            print("_________________\n")
             logging.info("I am a server")
             server_thread = threading.Thread(target=server, daemon=True)
             server_thread.start()
+    else:
+        print("Joined chat")
+        print("_________________\n")
     client()
         
+# Handle processing for the chat client
 def client():
     global mode
     if mode == 'c':
@@ -67,7 +77,7 @@ def client():
     listen_thread.start()
     talk_thread.start()
 
-
+# Send a message
 def talk(my_id: int, my_name: str, c_sock):
     not_done = True
     while not_done:
@@ -80,6 +90,7 @@ def talk(my_id: int, my_name: str, c_sock):
             text = str(my_name) + ": " + text + "$"
         c_sock.send(text.encode())
 
+# Handle receiving of incoming messages
 def listen(my_id: int, c_sock):
     #parse
     not_done = True
@@ -90,6 +101,7 @@ def listen(my_id: int, c_sock):
             display_message(incoming)
             # print(incoming)
 
+# Print the new message in a client's terminal
 def display_message(message):
     print(message.split('$')[0])
 
@@ -97,10 +109,11 @@ def display_message(message):
 def parse(message:str, my_id:int) -> str:
     pass
 
-
+# Handle processing for the chat server
 def server():
     new_client_id = 0
     not_done = True
+    global max_members
 
     #                                        type TCP
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -108,13 +121,13 @@ def server():
     #            local ip,  port
     server.bind(('0.0.0.0', 9090))
     # listen for maximum 10 connections
-    server.listen(10)
+    server.listen(max_members)
 
     client_list = []
 
     while not_done:
         # New connections can be accepted
-        if len(client_list) < 10:
+        if len(client_list) < max_members:
             client, addr = server.accept()
             initial_client_message = client.recv(1024).decode()
             logging.info(initial_client_message)
@@ -132,7 +145,7 @@ def server():
             for client_socket, client_id, client_addr in client_list:
                 try:
                     if client_id != new_client_id:
-                        client_socket.send(f'New chatter: {new_client_id}'.encode())
+                        client_socket.send(f'New chatter joined: {new_client_id}'.encode())
                 except Exception as e:
                     print(f"Error sending message to client {client_id}: {e}")
                     client_list.remove((client_socket, client_id, client_addr))
