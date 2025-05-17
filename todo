@@ -7,6 +7,7 @@ Commands:
 Implement usernames by sending username after ID in message
 
 Host quit ends server (the right way with closing message causing legit shutdown on other terminals)
+Close sockets from client side so that server doesn't end up with bad file descriptors
 
 @ addressing for direct message
 
@@ -17,3 +18,6 @@ Multiple servers with port command line argument
 Handle clients leaving during chat
 
 Uniform messages from server in the form print(f"-- message --")
+
+Create random number handshake as a passcode for server signals like shutdown when sent to a client. Checked in parse()
+

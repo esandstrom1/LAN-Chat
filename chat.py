@@ -67,19 +67,24 @@ def client():
     my_id = int(initial_message_from_server.split('$')[1])
     print(f"{initial_message_from_server.split('$')[0]} {initial_message_from_server.split('$')[1]}{initial_message_from_server.split('$')[2]}")
 
-    listen_thread = threading.Thread(target=listen, args=(my_id, c_sock), daemon=True)
+    listen_thread = threading.Thread(target=listen, args=(my_id, c_sock, my_name), daemon=True)
     talk_thread =  threading.Thread(target=talk, args=(my_id, my_name, c_sock))
 
     listen_thread.start()
     talk_thread.start()
 
 # Send a message
-def talk(my_id: int, my_name: str, c_sock):
+def talk(my_id: int, my_name: str, c_sock: socket.socket):
     not_done = True
     while not_done:
         # Creates a text prompt that can't be interrupted by incoming messages
         with patch_stdout():
             text = prompt("> ")
+
+        if text and text[0] == '/':
+            #process_command()
+            pass
+        
         if my_name == "":
             text = str(my_id) + ": " + text + "$"
         else:
@@ -87,14 +92,18 @@ def talk(my_id: int, my_name: str, c_sock):
         c_sock.send(text.encode())
 
 # Handle receiving of incoming messages
-def listen(my_id: int, c_sock):
+def listen(my_id: int, c_sock: socket.socket, my_name: str):
     #parse
     not_done = True
     while not_done:
         # incoming = c_sock.recv(1024).decode().split('$')[0]
         incoming = c_sock.recv(1024).decode()
         if incoming:
-            display_message(incoming)
+            if parse(incoming, my_id, my_name, c_sock) == True:
+                display_message(incoming)
+            else:
+                # The message is not meant to be displayed to the user. Private or signal from server
+                pass
             # print(incoming)
 
 # Print the new message in a client's terminal
@@ -102,8 +111,32 @@ def display_message(message):
     print(message.split('$')[0])
 
 # Read a message and determine if it's to you directly or a broadcast. If it's not to you, don't display it
-def parse(message:str, my_id:int) -> str:
-    pass
+def parse(message:str, my_id:int, my_name: str, c_sock: socket.socket) -> bool:
+    # Server signal
+    if message[0] == '!':
+        
+        # Shutdown initiated by server
+        if message[1] == '0':
+            print("Server shutting down", flush=True)
+            client_quit(c_sock)
+
+        return False
+    # Direct message
+    elif message[0] == '@':  #!!!! incorrect. Messages start with id:
+
+        return False
+    # Regular chat message
+    else:
+        return True
+
+# Terminate your connection to the server
+def client_quit(c_sock: socket.socket):
+    # Give client time to display server shutdown message
+    time.sleep(0.1)
+    #print("Client shutting down by itself")
+    c_sock.shutdown(socket.SHUT_RDWR)
+    c_sock.close()
+    os._exit(0)
 
 # Handle processing for the chat server
 def server():
@@ -183,7 +216,12 @@ def server_listen(c_id: int, c_sock: socket.socket, c_list: list):
             print(f"EXCEPTION TRIGGERED IN server_listen() {e}")
             logging.error(f"EXCEPTION TRIGGERED IN server_listen() {e}")
             break
-    c_sock.close()
+    # Client quit unexpectedly. The socket is not connected so shutdown is not needed. Just close it
+    try:
+        c_sock.close()
+    except Exception as e:
+        print(f"server_quit() error on close {e}")
+        logging.error(f"server_quit() error on close {e}")
 
 # Send a message receievd from a client to every other client
 def server_broadcast(message, source_client_id, c_list):
@@ -216,7 +254,7 @@ def server_quit(c_list: list):
     for client_socket, client_id, client_addr in c_list:
         if client_id != 0:
             try:
-                client_socket.send("Server shutting down...".encode())
+                client_socket.send("!0".encode())
             except Exception as e:
                 print(f"Error sending message to client {client_id}: {e}")
                 to_remove.append((client_socket, client_id, client_addr))
@@ -227,11 +265,14 @@ def server_quit(c_list: list):
     for _ in range(3):
         print(".", end='', flush=True)
         time.sleep(1)
+
+    # Clients should already be disconnected. Just close without shutdown
     for client_socket, _, _ in c_list:
         try:
             client_socket.close()
-        except:
-            pass
+        except Exception as e:
+            print(f"server_quit() error on close {e}")
+            logging.error(f"server_quit() error on close {e}")
     
     os._exit(0)
 
