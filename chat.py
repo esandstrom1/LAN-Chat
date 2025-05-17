@@ -63,13 +63,9 @@ def client():
         c_sock.send("Host".encode())
     
     initial_message_from_server = c_sock.recv(1024).decode()
-    #print(f"{initial_message_from_server.split('$')[0]}")
     logging.info(initial_message_from_server)
     my_id = int(initial_message_from_server.split('$')[1])
-    print(f"{initial_message_from_server.split('$')[0]} {initial_message_from_server.split('$')[1]}")
-
-    #Test for subsequent message from server
-    #print(c_sock.recv(1024).decode())
+    print(f"{initial_message_from_server.split('$')[0]} {initial_message_from_server.split('$')[1]}{initial_message_from_server.split('$')[2]}")
 
     listen_thread = threading.Thread(target=listen, args=(my_id, c_sock), daemon=True)
     talk_thread =  threading.Thread(target=talk, args=(my_id, my_name, c_sock))
@@ -132,18 +128,17 @@ def server():
             client, addr = server.accept()
             initial_client_message = client.recv(1024).decode()
             logging.info(initial_client_message)
-            #print(initial_client_message)
 
 
             if initial_client_message == "Host":
-                client.send(f'You are the Host$0'.encode())
+                client.send(f'-- You are the Host$0$ --'.encode())
                 client_list.append((client, 0, addr))
             else:
-                client.send(f'You are${new_client_id}'.encode())
+                client.send(f'-- You are${new_client_id}$ --'.encode())
                 client_list.append((client, new_client_id, addr))
 
             # Broadcast message of new chatter
-            new_chatter_message = f"New chatter joined: {new_client_id}"
+            new_chatter_message = f"-- New chatter joined: {new_client_id} --"
             server_broadcast(new_chatter_message, new_client_id, client_list)
 
 
@@ -168,7 +163,7 @@ def server_listen(c_id: int, c_sock: socket.socket, c_list: list):
                 logging.info(f"{c_id} says: {incoming}")
 
                 # Quit command detected from host
-                if incoming == "0: /quit$":
+                if incoming == "0: /quit$" and c_id == 0:
                     server_quit(c_list)
                 # Normal message
                 else:
@@ -180,6 +175,7 @@ def server_listen(c_id: int, c_sock: socket.socket, c_list: list):
                 to_remove.append(get_client_from_id(c_id, c_sock, c_list))
                 amend_client_list(c_list, to_remove)
                 client_left_message = f"-- User {c_id} left the chat --"
+                logging.info(f"{c_id} left the chat")
                 server_broadcast(client_left_message, c_id, c_list)
 
                 break
@@ -203,6 +199,7 @@ def server_broadcast(message, source_client_id, c_list):
     if len(to_remove) > 0:
         amend_client_list(c_list, to_remove)
 
+# Get the full client tuple from just an id or socket
 def get_client_from_id(target_id, target_sock, client_list):
     for c_sock, c_id, c_addr in client_list:
         if target_sock == c_sock or target_id == c_id:
@@ -213,7 +210,7 @@ def get_client_from_id(target_id, target_sock, client_list):
 # Close the server
 def server_quit(c_list: list):
     to_remove = []
-    print("The party is over")
+    print("Shutting down")
     
     # Broadcast the message to everyone
     for client_socket, client_id, client_addr in c_list:
@@ -245,8 +242,8 @@ def amend_client_list(client_list, to_remove):
             client_list.remove(item)
         else:
             logging.error(f"amend_client_list() tried to remove an item that wasn't there. {item}")
-            #print("amend_client_list() It wasn't there")
-    to_remove.clear()
+    if isinstance(to_remove, list):
+        to_remove.clear()
     
     
 

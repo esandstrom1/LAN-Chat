@@ -6,7 +6,6 @@ Commands:
 
 Implement usernames by sending username after ID in message
 
-Disconnect messages: "2 disconnected"
 Host quit ends server (the right way with closing message causing legit shutdown on other terminals)
 
 @ addressing for direct message
