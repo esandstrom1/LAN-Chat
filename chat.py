@@ -17,7 +17,7 @@ from prompt_toolkit.patch_stdout import patch_stdout
 
 
 mode = 'c'
-max_members = 20
+max_members = 10
 
 log_path = os.path.join(os.path.dirname(__file__), 'app.log')
 logging.basicConfig(filename=log_path, level=logging.INFO)
@@ -33,8 +33,7 @@ def main ():
             server_thread = threading.Thread(target=server, daemon=True)
             server_thread.start()
     else:
-        print("Joined chat")
-        print("_________________\n")
+        pass
     client()
         
 # Handle processing for the chat client
@@ -50,12 +49,22 @@ def client():
     c_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     connected = False
-    while not connected:
+    for i in range(10):
         try:
             c_sock.connect(('192.168.1.230', 9090))
             connected = True
-        except ConnectionRefusedError:
+            break
+        except Exception as e:
+            logging.error(f"Exception {e}")
+            logging.error(f"Client failed to connect to server on attempt {i}")
             time.sleep(0.1)
+    if connected == False:
+        print("Failed to connect after multiple attempts. Please ensure the server is running or run yourself with 'python3 chat.py s'")
+        c_sock.close()
+        return
+    if mode == 'c':
+        print("Joined chat")
+        print("_________________\n")
 
     if mode == 'c':
         c_sock.send("Hello from client. Send my ID".encode())
@@ -63,6 +72,13 @@ def client():
         c_sock.send("Host".encode())
     
     initial_message_from_server = c_sock.recv(1024).decode()
+
+    if "Server full" in initial_message_from_server:
+        print(initial_message_from_server)
+        c_sock.close()
+        return
+
+
     logging.info(initial_message_from_server)
     my_id = int(initial_message_from_server.split('$')[1])
     print(f"{initial_message_from_server.split('$')[0]} {initial_message_from_server.split('$')[1]}{initial_message_from_server.split('$')[2]}")
@@ -156,9 +172,11 @@ def server():
     to_remove = []
 
     while not_done:
+        client, addr = server.accept()
+
         # New connections can be accepted
         if len(client_list) < max_members:
-            client, addr = server.accept()
+            #client, addr = server.accept()
             initial_client_message = client.recv(1024).decode()
             logging.info(initial_client_message)
 
@@ -184,6 +202,8 @@ def server():
         # Full - New connections cannot be accepted
         else:
             print("Excess clients. New client not added")
+            client.send("Server full. Please try again later".encode())
+            client.close()
 
 # The server's listening thread for a single socket
 def server_listen(c_id: int, c_sock: socket.socket, c_list: list):
