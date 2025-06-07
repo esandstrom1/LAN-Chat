@@ -7,6 +7,7 @@
 
 import os
 import sys
+import re
 import socket
 import threading
 import time
@@ -17,7 +18,8 @@ from prompt_toolkit.patch_stdout import patch_stdout
 
 
 mode = 'c'
-max_members = 10
+nickname = ""
+max_members = 20
 
 log_path = os.path.join(os.path.dirname(__file__), 'app.log')
 logging.basicConfig(filename=log_path, level=logging.INFO)
@@ -32,8 +34,6 @@ def main ():
             logging.info("I am a server")
             server_thread = threading.Thread(target=server, daemon=True)
             server_thread.start()
-    else:
-        pass
     client()
         
 # Handle processing for the chat client
@@ -43,11 +43,12 @@ def client():
         my_id = -1
     elif mode == 's':
         my_id = 0
-    my_name = ""
+    my_name = [""]
 
     # The client's socket c_sock
     c_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
+    # Attempt to connect multiple times before considering unsuccessful
     connected = False
     for i in range(10):
         try:
@@ -58,10 +59,12 @@ def client():
             logging.error(f"Exception {e}")
             logging.error(f"Client failed to connect to server on attempt {i}")
             time.sleep(0.1)
+    # Handle non-existent server when attempting to start as client
     if connected == False:
         print("Failed to connect after multiple attempts. Please ensure the server is running or run yourself with 'python3 chat.py s'")
         c_sock.close()
         return
+    # Initial join message for client
     if mode == 'c':
         print("Joined chat")
         print("_________________\n")
@@ -73,15 +76,17 @@ def client():
     
     initial_message_from_server = c_sock.recv(1024).decode()
 
+    # Terminate if server is full
     if "Server full" in initial_message_from_server:
         print(initial_message_from_server)
         c_sock.close()
         return
 
-
+    # Parse and display initial message received from server
     logging.info(initial_message_from_server)
-    my_id = int(initial_message_from_server.split('$')[1])
-    print(f"{initial_message_from_server.split('$')[0]} {initial_message_from_server.split('$')[1]}{initial_message_from_server.split('$')[2]}")
+    my_id = int(initial_message_from_server.split('\n')[1])
+    message_parts = initial_message_from_server.split('\n')
+    print(f"{message_parts[0]} {message_parts[1]}{message_parts[2]}")
 
     listen_thread = threading.Thread(target=listen, args=(my_id, c_sock, my_name), daemon=True)
     talk_thread =  threading.Thread(target=talk, args=(my_id, my_name, c_sock))
@@ -90,7 +95,7 @@ def client():
     talk_thread.start()
 
 # Send a message
-def talk(my_id: int, my_name: str, c_sock: socket.socket):
+def talk(my_id: int, my_name: list, c_sock: socket.socket):
     not_done = True
     while not_done:
         # Creates a text prompt that can't be interrupted by incoming messages
@@ -98,14 +103,58 @@ def talk(my_id: int, my_name: str, c_sock: socket.socket):
             text = prompt("> ")
 
         if text and text[0] == '/':
-            #process_command()
-            pass
+            process_command(text, my_id, my_name, c_sock)
         
-        if my_name == "":
-            text = str(my_id) + ": " + text + "$"
+        # if my_name == "":
+        #     text = str(my_id) + ": " + text + "$"
+        # else:
+        #     text = str(my_name) + ": " + text + "$"
+        # c_sock.send(text.encode())
+        client_send(text, c_sock, my_name, my_id)
+
+# Send the message to server as client
+def client_send(text:str, c_sock:socket.socket, my_name: list, my_id:int):
+    if my_name[0]:
+        #print("Sending with a nickname")
+        logging.info(f"Message from {my_id} being sent with a nickname: {my_name[0]}")
+        text = str(my_id) + ": " + text + "\n" + my_name[0] + "\n"
+    else:
+        text = str(my_id) + ": " + text + "\n"
+    #print(f"Sending _{text}_")
+    c_sock.send(text.encode())
+
+# Process an outgoing command message as the client such as /help, /name, etc
+def process_command(message: str, my_id: str, my_name: list, c_sock):
+    supported_commands = ["/help - view all commands", "/name [newname] - rename yourself", "/quit - Leave the chatroom"]
+
+
+    command_input = message.strip().split()
+    command = command_input[0][1:]
+    args = command_input[1:]
+
+    print("Command received")
+    print(f'Command: {command}')
+    print(f"Args: {args}")
+
+    if command == "help":
+        for item in supported_commands:
+            print(item)
+    elif command == "name":
+        print("Changing nickname")
+        if len(args) > 1:
+            print("Nicknames can only be one word")
         else:
-            text = str(my_name) + ": " + text + "$"
-        c_sock.send(text.encode())
+            my_name[0] = args[0]
+    elif command == "quit":
+        print("QUITTING")
+        # Don't quit directly as the host. Must go through proper shutdown procedure
+        if my_id != 0:
+            print("Quitting as a client")
+            client_send(message, c_sock, my_name, my_id)
+            client_quit(c_sock)
+    else:
+        print("Command not recognized. For a full list of supported commands, type /help")
+
 
 # Handle receiving of incoming messages
 def listen(my_id: int, c_sock: socket.socket, my_name: str):
@@ -124,10 +173,23 @@ def listen(my_id: int, c_sock: socket.socket, my_name: str):
 
 # Print the new message in a client's terminal
 def display_message(message):
-    print(message.split('$')[0])
+    #print(f"Full received message to print: _{message}_")
+    parts = message.split('\n')
+
+
+    # Message from user with no nickname
+    if len(parts) == 2:
+        print(message.split('\n')[0])
+    # Message from user with nickname
+    elif len(parts) == 3:
+        position = parts[0].find(' ')
+        new_message = parts[1] + ": " + parts[0][position+1:]
+        print(new_message)
+
+            
 
 # Read a message and determine if it's to you directly or a broadcast. If it's not to you, don't display it
-def parse(message:str, my_id:int, my_name: str, c_sock: socket.socket) -> bool:
+def parse(message:str, my_id:int, my_name: list, c_sock: socket.socket) -> bool:
     # Server signal
     if message[0] == '!':
         
@@ -165,7 +227,7 @@ def server():
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     #            local ip,  port
     server.bind(('0.0.0.0', 9090))
-    # listen for maximum 10 connections
+    # listen for maximum number of connections
     server.listen(max_members)
 
     client_list = []
@@ -182,11 +244,11 @@ def server():
 
 
             if initial_client_message == "Host":
-                client.send(f'-- You are the Host$0$ --'.encode())
-                client_list.append((client, 0, addr))
+                client.send(f'-- You are the Host\n0\n --'.encode())
+                client_list.append((client, 0, addr, ""))
             else:
-                client.send(f'-- You are${new_client_id}$ --'.encode())
-                client_list.append((client, new_client_id, addr))
+                client.send(f'-- You are\n{new_client_id}\n --'.encode())
+                client_list.append((client, new_client_id, addr, ""))
 
             # Broadcast message of new chatter
             new_chatter_message = f"-- New chatter joined: {new_client_id} --"
@@ -216,7 +278,8 @@ def server_listen(c_id: int, c_sock: socket.socket, c_list: list):
                 logging.info(f"{c_id} says: {incoming}")
 
                 # Quit command detected from host
-                if incoming == "0: /quit$" and c_id == 0:
+                quit_command = r"^0: /quit\n.*"
+                if re.match(quit_command, incoming) and c_id == 0:
                     server_quit(c_list)
                 # Normal message
                 else:
@@ -247,19 +310,19 @@ def server_listen(c_id: int, c_sock: socket.socket, c_list: list):
 def server_broadcast(message, source_client_id, c_list):
     to_remove = []
     # Broadcast the message to everyone
-    for client_socket, client_id, client_addr in c_list:
+    for client_socket, client_id, client_addr, client_nickname in c_list:
         if client_id != source_client_id:
             try:
                 client_socket.send(message.encode())
             except Exception as e:
                 print(f"Error sending message to client {client_id}: {e}")
-                to_remove.append((client_socket, client_id, client_addr))
+                to_remove.append((client_socket, client_id, client_addr, client_nickname))
     if len(to_remove) > 0:
         amend_client_list(c_list, to_remove)
 
 # Get the full client tuple from just an id or socket
 def get_client_from_id(target_id, target_sock, client_list):
-    for c_sock, c_id, c_addr in client_list:
+    for c_sock, c_id, c_addr, client_nickname in client_list:
         if target_sock == c_sock or target_id == c_id:
             return (c_sock, c_id, c_addr)
     logging.error(f"get_client_id() for id:{target_id} failed to find target")
@@ -271,7 +334,7 @@ def server_quit(c_list: list):
     print("Shutting down")
     
     # Broadcast the message to everyone
-    for client_socket, client_id, client_addr in c_list:
+    for client_socket, client_id, client_addr, client_nickname in c_list:
         if client_id != 0:
             try:
                 client_socket.send("!0".encode())
@@ -287,7 +350,7 @@ def server_quit(c_list: list):
         time.sleep(1)
 
     # Clients should already be disconnected. Just close without shutdown
-    for client_socket, _, _ in c_list:
+    for client_socket, _, _, _ in c_list:
         try:
             client_socket.close()
         except Exception as e:

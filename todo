@@ -3,6 +3,9 @@ Commands:
 /members shows all members
 /time toggle on off timestamps
 /ban or /remove from host to remove
+/room change room
+
+
 
 Implement usernames by sending username after ID in message
 
@@ -12,122 +15,8 @@ Handle multiple users attempting to start server
 
 Multiple servers with port command line argument
 
-Create random number handshake as a passcode for server signals like shutdown when sent to a client. Checked in parse()
 
-
-
-
-
-
-
-
-
-
-
-
-
-Upgrading to web based:
-
-Step 1: Refactor your Python code to Flask + Flask-SocketIO
-
-    Convert your current terminal socket server to a Flask app.
-
-    Use Flask-SocketIO to handle real-time chat messaging via WebSockets.
-
-    Use Flask’s templating (Jinja2) to serve an HTML page for the chat UI.
-
-    Add JavaScript in that HTML page to connect via WebSocket to Flask-SocketIO backend.
-
-Step 2: Prepare your project folder
-
-    Put everything in one folder, e.g., chat-app/
-
-    Basic structure:
-
-    chat-app/
-      ├── app.py          # Flask + Flask-SocketIO server
-      ├── templates/
-      │     └── index.html # Your chat page (HTML + JS)
-      ├── static/
-      │     └── chat.js    # JS code to connect to socket server
-      └── requirements.txt # List Flask, Flask-SocketIO, etc.
-
-Step 3: Write your Flask app (app.py)
-
-    Set up Flask and Flask-SocketIO server
-
-    Serve index.html on /
-
-    Handle SocketIO events like connect, message, disconnect
-
-    Broadcast messages to all clients connected
-
-Step 4: Create your HTML + JS frontend
-
-    Simple page with a chat window and input box
-
-    JS connects to Flask-SocketIO backend using Socket.IO client library
-
-    Handles sending messages and displaying incoming messages live
-
-Step 5: Test locally
-
-    Run app.py locally
-
-    Open browser to http://localhost:5000
-
-    Open multiple tabs or devices and test chat
-
-Step 6: Prepare for deployment
-
-    Add a requirements.txt with all dependencies (Flask, Flask-SocketIO, eventlet or gevent)
-
-    Create a Procfile (if needed) for Render to run your app:
-
-    web: gunicorn -k eventlet -w 1 app:app
-
-    Make sure your app listens on 0.0.0.0 and port from environment variable PORT Render provides
-
-Step 7: Create GitHub repo and push code
-
-    Create GitHub repository
-
-    Push your project folder with all files
-
-Step 8: Set up Render.com
-
-    Sign up for free on render.com
-
-    Connect your GitHub account
-
-    Create a New Web Service
-
-    Choose your repo and the branch
-
-    Set build command (usually pip install -r requirements.txt)
-
-    Set start command (from Procfile or directly: gunicorn -k eventlet -w 1 app:app)
-
-    Deploy!
-
-Step 9: Visit your Render URL and test live
-
-    Open the URL Render gives you
-
-    Test chatting from multiple devices/browsers
-
-Summary checklist
-
-    Refactor socket server to Flask + Flask-SocketIO
-
-    Create HTML + JS frontend served by Flask
-
-    Test locally, debug
-
-    Add requirements and Procfile
-
-    Push to GitHub
-
-    Deploy on Render via connected repo
-
-    Done
+Do not permit duplicate nicknames
+Handle direct messageing with @s
+Create multiple chat rooms by adding room# field to server's address book
+    So that when someone from one room sends a message, the server checks the room of the sender and then sends it to only people in that room
