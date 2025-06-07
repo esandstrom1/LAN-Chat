@@ -24,6 +24,15 @@ max_members = 20
 log_path = os.path.join(os.path.dirname(__file__), 'app.log')
 logging.basicConfig(filename=log_path, level=logging.INFO)
 
+class ClientConnection:
+    def __init__(self, socket: socket.socket, id: int, address, nickname=""):
+        self.socket = socket
+        self.id = id
+        self.address = address
+        self.nickname = nickname
+    def __eq__(self, rhs):
+        return isinstance(rhs, ClientConnection) and self.id == rhs.id and self.socket == rhs.socket
+
 def main ():
     if len(sys.argv) == 2:
         if sys.argv[1] == 's':
@@ -132,9 +141,9 @@ def process_command(message: str, my_id: str, my_name: list, c_sock):
     command = command_input[0][1:]
     args = command_input[1:]
 
-    print("Command received")
-    print(f'Command: {command}')
-    print(f"Args: {args}")
+    # print("Command received")
+    # print(f'Command: {command}')
+    # print(f"Args: {args}")
 
     if command == "help":
         for item in supported_commands:
@@ -146,10 +155,10 @@ def process_command(message: str, my_id: str, my_name: list, c_sock):
         else:
             my_name[0] = args[0]
     elif command == "quit":
-        print("QUITTING")
+        #print("QUITTING")
         # Don't quit directly as the host. Must go through proper shutdown procedure
         if my_id != 0:
-            print("Quitting as a client")
+            #print("Quitting as a client")
             client_send(message, c_sock, my_name, my_id)
             client_quit(c_sock)
     else:
@@ -176,17 +185,17 @@ def display_message(message):
     #print(f"Full received message to print: _{message}_")
     parts = message.split('\n')
 
-
+    # System message with no newline characters
+    if len(parts) == 1:
+        print(message)
     # Message from user with no nickname
-    if len(parts) == 2:
+    elif len(parts) == 2:
         print(message.split('\n')[0])
     # Message from user with nickname
     elif len(parts) == 3:
         position = parts[0].find(' ')
         new_message = parts[1] + ": " + parts[0][position+1:]
         print(new_message)
-
-            
 
 # Read a message and determine if it's to you directly or a broadcast. If it's not to you, don't display it
 def parse(message:str, my_id:int, my_name: list, c_sock: socket.socket) -> bool:
@@ -231,32 +240,35 @@ def server():
     server.listen(max_members)
 
     client_list = []
-    to_remove = []
 
     while not_done:
-        client, addr = server.accept()
+        client_sock, addr = server.accept()
 
         # New connections can be accepted
         if len(client_list) < max_members:
             #client, addr = server.accept()
-            initial_client_message = client.recv(1024).decode()
+            initial_client_message = client_sock.recv(1024).decode()
             logging.info(initial_client_message)
 
 
             if initial_client_message == "Host":
-                client.send(f'-- You are the Host\n0\n --'.encode())
-                client_list.append((client, 0, addr, ""))
+                client_sock.send(f'-- You are the Host\n0\n --'.encode())
+                #client_list.append((client, 0, addr, ""))
+                New_client = ClientConnection(client_sock, 0, addr)
             else:
-                client.send(f'-- You are\n{new_client_id}\n --'.encode())
-                client_list.append((client, new_client_id, addr, ""))
+                client_sock.send(f'-- You are\n{new_client_id}\n --'.encode())
+                #client_list.append((client, new_client_id, addr, ""))
+                New_client = ClientConnection(client_sock, new_client_id, addr)
+            client_list.append(New_client)
 
             # Broadcast message of new chatter
-            new_chatter_message = f"-- New chatter joined: {new_client_id} --"
-            server_broadcast(new_chatter_message, new_client_id, client_list)
+            #print("Sending message that new chatter joined")
+            new_chatter_message = f"-- New chatter joined: {New_client.id} --"
+            server_broadcast(new_chatter_message, New_client.id, client_list)
 
 
             # Launch thread to handle individual client connection
-            handle_client_thread = threading.Thread(target=server_listen, args=(new_client_id, client, client_list), daemon=True)
+            handle_client_thread = threading.Thread(target=server_listen, args=(New_client.id, New_client.socket, client_list), daemon=True)
             handle_client_thread.start()
 
 
@@ -264,8 +276,8 @@ def server():
         # Full - New connections cannot be accepted
         else:
             print("Excess clients. New client not added")
-            client.send("Server full. Please try again later".encode())
-            client.close()
+            client_sock.send("Server full. Please try again later".encode())
+            client_sock.close()
 
 # The server's listening thread for a single socket
 def server_listen(c_id: int, c_sock: socket.socket, c_list: list):
@@ -307,24 +319,28 @@ def server_listen(c_id: int, c_sock: socket.socket, c_list: list):
         logging.error(f"server_quit() error on close {e}")
 
 # Send a message receievd from a client to every other client
-def server_broadcast(message, source_client_id, c_list):
+def server_broadcast(message: str, source_client_id: int, c_list: list):
+    #print("server_broadcast() called")
     to_remove = []
     # Broadcast the message to everyone
-    for client_socket, client_id, client_addr, client_nickname in c_list:
-        if client_id != source_client_id:
+    # x = 1
+    for Client in c_list:
+        # print(f"client list iteration number {x}")
+        # x += 1
+        if Client.id != source_client_id:
             try:
-                client_socket.send(message.encode())
+                Client.socket.send(message.encode())
             except Exception as e:
-                print(f"Error sending message to client {client_id}: {e}")
-                to_remove.append((client_socket, client_id, client_addr, client_nickname))
+                print(f"Error sending message to client {Client.id}: {e}. Removing")
+                to_remove.append(Client)
     if len(to_remove) > 0:
         amend_client_list(c_list, to_remove)
 
 # Get the full client tuple from just an id or socket
-def get_client_from_id(target_id, target_sock, client_list):
-    for c_sock, c_id, c_addr, client_nickname in client_list:
-        if target_sock == c_sock or target_id == c_id:
-            return (c_sock, c_id, c_addr)
+def get_client_from_id(target_id: int, target_sock: socket.socket, client_list: list) -> ClientConnection:
+    for Client in client_list:
+        if target_sock == Client.socket or target_id == Client.id:
+            return (Client)
     logging.error(f"get_client_id() for id:{target_id} failed to find target")
     return None
 
@@ -334,13 +350,13 @@ def server_quit(c_list: list):
     print("Shutting down")
     
     # Broadcast the message to everyone
-    for client_socket, client_id, client_addr, client_nickname in c_list:
-        if client_id != 0:
+    for Client in c_list:
+        if Client.id != 0:
             try:
-                client_socket.send("!0".encode())
+                Client.socket.send("!0".encode())
             except Exception as e:
-                print(f"Error sending message to client {client_id}: {e}")
-                to_remove.append((client_socket, client_id, client_addr))
+                print(f"Error sending message to client {Client.id}: {e}")
+                to_remove.append(Client)
     if len(to_remove) > 0:
         amend_client_list(c_list, to_remove)
     
@@ -350,9 +366,9 @@ def server_quit(c_list: list):
         time.sleep(1)
 
     # Clients should already be disconnected. Just close without shutdown
-    for client_socket, _, _, _ in c_list:
+    for Client in c_list:
         try:
-            client_socket.close()
+            Client.socket.close()
         except Exception as e:
             print(f"server_quit() error on close {e}")
             logging.error(f"server_quit() error on close {e}")
@@ -360,14 +376,13 @@ def server_quit(c_list: list):
     os._exit(0)
 
 # Remove clients that threw an exception or otherwise
-def amend_client_list(client_list, to_remove):
-    for item in to_remove:
-        if item in client_list:
-            client_list.remove(item)
+def amend_client_list(client_list: list, to_remove: list):
+    for Client in to_remove:
+        if Client in client_list:
+            client_list.remove(Client)
         else:
-            logging.error(f"amend_client_list() tried to remove an item that wasn't there. {item}")
-    if isinstance(to_remove, list):
-        to_remove.clear()
+            logging.error(f"amend_client_list() tried to remove an item that wasn't there. {Client}")
+    to_remove.clear()
     
     
 
